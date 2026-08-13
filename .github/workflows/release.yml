@@ -1,0 +1,240 @@
+name: Release
+
+# Publishes a GitHub release with one APK per app (mobile + TV). Obtainium
+# polls the releases of this repo, so the shape here matters:
+#   - the tag is the version string Obtainium shows and compares (vX.Y.Z),
+#   - each APK is a plain release asset, named so an APK filter regex can pick
+#     one app (notify-mobile-X.Y.Z.apk / notify-tv-X.Y.Z.apk),
+#   - every build is signed with the keystore supplied through GitHub secrets
+#     (KEYSTORE_BASE64 + KEYSTORE_PASSWORD + KEY_ALIAS + KEY_PASSWORD), so an
+#     update installs over the previous build instead of being rejected.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. 1.2.3 — the v-prefixed tag is created for you'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_code: ${{ steps.version.outputs.version_code }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Derive version and versionCode
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW="$INPUT_VERSION"
+          else
+            RAW="$REF_NAME"
+          fi
+          VERSION="${RAW#v}"
+
+          # X.Y.Z, optionally followed by a prerelease suffix such as -beta.1
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'$RAW' is not a X.Y.Z[-suffix] version"
+            exit 1
+          fi
+
+          CORE="${VERSION%%-*}"
+          MAJOR="${CORE%%.*}"
+          PATCH="${CORE##*.}"
+          MINOR="${CORE#*.}"; MINOR="${MINOR%.*}"
+          if [ "$MINOR" -gt 999 ] || [ "$PATCH" -gt 999 ]; then
+            echo "::error::minor and patch must each stay under 1000 for the versionCode scheme"
+            exit 1
+          fi
+          # Monotonic with semver ordering; prerelease suffixes share the code of
+          # the release they lead up to, so tag a fresh patch to re-publish.
+          VERSION_CODE=$(( MAJOR * 1000000 + MINOR * 1000 + PATCH ))
+
+          PRERELEASE=false
+          case "$VERSION" in *-*) PRERELEASE=true ;; esac
+
+          {
+            echo "version=$VERSION"
+            echo "version_code=$VERSION_CODE"
+            echo "tag=v$VERSION"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.label }}
+    needs: prepare
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - module: app
+            label: Mobile
+            task: :app:assembleRelease
+            prefix: notify-mobile
+          - module: tv
+            label: Android TV
+            task: :tv:assembleRelease
+            prefix: notify-tv
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Write signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then
+            mkdir -p keystore
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > keystore/release.jks
+          fi
+
+      - name: Build ${{ matrix.label }} release APK
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/keystore/release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew --no-daemon --stacktrace ${{ matrix.task }} \
+            -PappVersionName=${{ needs.prepare.outputs.version }} \
+            -PappVersionCode=${{ needs.prepare.outputs.version_code }}
+
+      - name: Verify signature and name the asset
+        id: asset
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          APK=""
+          for f in ${{ matrix.module }}/build/outputs/apk/release/*.apk; do
+            [ -e "$f" ] || continue
+            APK="$f"
+            break
+          done
+          if [ -z "$APK" ]; then
+            echo "::error::No APK produced for the ${{ matrix.module }} module"
+            exit 1
+          fi
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK"
+
+          # Obtainium reads the version out of the APK and compares it with the
+          # release tag, so a mismatch here would show up as a permanent update.
+          #
+          # Read the manifest rather than `dump badging`: badging resolves
+          # android:icon/banner as a side effect and exits non-zero if it cannot.
+          # xmltree just reads the literal attribute.
+          AAPT2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
+          XMLTREE=$("$AAPT2" dump xmltree "$APK" --file AndroidManifest.xml 2>/dev/null || true)
+          APK_VERSION=$(printf '%s\n' "$XMLTREE" \
+            | sed -n 's/.*android:versionName[^=]*="\([^"]*\)".*/\1/p' \
+            | awk 'NR==1')
+
+          if [ -z "$APK_VERSION" ]; then
+            # Fall back to what the Android Gradle plugin recorded for this APK.
+            META="${{ matrix.module }}/build/outputs/apk/release/output-metadata.json"
+            echo "::warning::Could not read versionName via aapt2; falling back to $META"
+            APK_VERSION=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['elements'][0]['versionName'])" "$META")
+          fi
+
+          echo "APK versionName: $APK_VERSION"
+          if [ "$APK_VERSION" != "$VERSION" ]; then
+            echo "::error::APK versionName '$APK_VERSION' does not match release version '$VERSION'"
+            exit 1
+          fi
+
+          NAME="${{ matrix.prefix }}-$VERSION.apk"
+          mv "$APK" "$NAME"
+          echo "apk=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload ${{ matrix.label }} APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.prefix }}
+          path: ${{ steps.asset.outputs.apk }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download APKs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          ls -l dist
+
+          NOTES=$(cat <<EOF
+          Install with [Obtainium](https://github.com/ImranR98/Obtainium) — add this repo as a GitHub source and set the APK filter to \`notify-mobile-\` or \`notify-tv-\`.
+
+          | Variant | APK |
+          | :--- | :--- |
+          | Phones and tablets | \`notify-mobile-$VERSION.apk\` |
+          | Android TV / Google TV | \`notify-tv-$VERSION.apk\` |
+          EOF
+          )
+
+          FLAGS=()
+          if [ "$PRERELEASE" = "true" ]; then FLAGS+=(--prerelease); fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.apk --clobber
+            gh release edit "$TAG" --title "$TAG" --notes "$NOTES" "${FLAGS[@]}"
+          else
+            gh release create "$TAG" dist/*.apk \
+              --target "$GITHUB_SHA" \
+              --title "$TAG" \
+              --notes "$NOTES" \
+              "${FLAGS[@]}"
+          fi
