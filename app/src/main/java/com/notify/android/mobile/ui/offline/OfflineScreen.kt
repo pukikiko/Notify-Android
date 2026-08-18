@@ -37,6 +37,7 @@ fun OfflineScreen(
     val vm = offlineViewModel()
     val tracks by vm.tracks.collectAsState()
     val downloads by vm.downloads.collectAsState()
+    var confirmDeleteAll by remember { mutableStateOf(false) }
 
     val groups = remember(tracks) {
         tracks.groupBy { it.collection }
@@ -63,7 +64,7 @@ fun OfflineScreen(
                     modifier = Modifier.weight(1f)
                 )
                 if (tracks.isNotEmpty()) {
-                    TextButton(onClick = { vm.removeAll() }) {
+                    TextButton(onClick = { confirmDeleteAll = true }) {
                         Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
                         Text(" Delete all")
                     }
@@ -152,6 +153,28 @@ fun OfflineScreen(
                 }
             }
         }
+    }
+
+    if (confirmDeleteAll) {
+        AlertDialog(
+            onDismissRequest = { confirmDeleteAll = false },
+            containerColor = Color(0xFF282828),
+            titleContentColor = Color.White,
+            textContentColor = Color(0xFFB3B3B3),
+            title = { Text("Delete all downloads?") },
+            text = { Text("All ${tracks.size} offline tracks will be removed from this device. This can't be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDeleteAll = false
+                        vm.removeAll()
+                    }
+                ) { Text("Delete all", color = Color(0xFFE53935)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteAll = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 

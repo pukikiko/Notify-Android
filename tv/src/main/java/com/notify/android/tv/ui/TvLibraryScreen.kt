@@ -39,6 +39,7 @@ fun TvLibraryScreen(playerVm: PlayerViewModel, nav: TvNavState) {
     val tracks by libVm.tracks.collectAsState()
     val playlistsVm = playlistsViewModel()
     val playlists by playlistsVm.playlists.collectAsState()
+    val pl = playlists
 
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -62,24 +63,25 @@ fun TvLibraryScreen(playerVm: PlayerViewModel, nav: TvNavState) {
                 }
             }
         }
-        if (!playlists.isNullOrEmpty()) {
-            item { TvSectionTitle("Your playlists") }
-            item {
-                LazyRow(contentPadding = PaddingValues(horizontal = 40.dp)) {
-                    items(playlists.orEmpty()) { p ->
-                        TvCard(
-                            imageUrl = p.image?.let { imageUrl(it) },
-                            title = p.name,
-                            subtitle = "Playlist • ${p.trackCount ?: 0} songs",
-                            onClick = { nav.navigate(TvScreen.Playlist(p.id)) },
-                            width = 212.dp
-                        )
+        if (pl != null) {
+            if (pl.isEmpty()) {
+                item { EmptyTv("No playlists yet. Create one to get started.") }
+            } else {
+                item { TvSectionTitle("Your playlists") }
+                item {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 40.dp)) {
+                        items(pl) { p ->
+                            TvCard(
+                                imageUrl = p.image?.let { imageUrl(it) },
+                                title = p.name,
+                                subtitle = "Playlist • ${p.trackCount ?: 0} songs",
+                                onClick = { nav.navigate(TvScreen.Playlist(p.id)) },
+                                width = 212.dp
+                            )
+                        }
                     }
                 }
             }
-        }
-        if (playlists.isNullOrEmpty()) {
-            item { EmptyTv("No playlists yet. Create one to get started.") }
         }
     }
 }
@@ -89,6 +91,7 @@ fun TvLibraryScreen(playerVm: PlayerViewModel, nav: TvNavState) {
 fun TvLikedSongsScreen(playerVm: PlayerViewModel) {
     val vm = libraryViewModel()
     val tracks by vm.tracks.collectAsState()
+    val trackList = tracks
 
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -107,12 +110,16 @@ fun TvLikedSongsScreen(playerVm: PlayerViewModel) {
             )
         }
 
-        if (tracks.isNullOrEmpty()) {
-            item { EmptyTv("No liked tracks yet. Tap the heart on any track.") }
-        } else {
-            item {
+        when {
+            trackList == null -> item {
+                Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator(color = Color(0xFF2A2A2A))
+                }
+            }
+            trackList.isEmpty() -> item { EmptyTv("No liked tracks yet. Tap the heart on any track.") }
+            else -> item {
                 TvTrackList(
-                    tracks = tracks.orEmpty(),
+                    tracks = trackList,
                     playerVm = playerVm
                 )
             }

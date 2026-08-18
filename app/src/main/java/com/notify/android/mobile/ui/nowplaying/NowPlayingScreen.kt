@@ -3,6 +3,8 @@ package com.notify.android.mobile.ui.nowplaying
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -26,7 +28,10 @@ import com.notify.core.ui.player.PlayerViewModel
 import com.notify.core.ui.viewmodels.imageUrl
 import com.notify.core.player.RepeatMode
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    androidx.compose.foundation.ExperimentalFoundationApi::class
+)
 @Composable
 fun NowPlayingScreen(
     playerVm: PlayerViewModel,
@@ -163,16 +168,22 @@ fun NowPlayingScreen(
 
             // Seek bar
             if (track != null) {
+                var dragPosition by remember { mutableStateOf<Float?>(null) }
+                val shownPosition = dragPosition ?: position.toFloat()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(formatDurationMs(position), style = MaterialTheme.typography.labelSmall, color = Color(0xFFB3B3B3))
+                    Text(formatDurationMs(shownPosition.toLong()), style = MaterialTheme.typography.labelSmall, color = Color(0xFFB3B3B3))
                     Slider(
-                        value = position.toFloat(),
-                        onValueChange = { playerVm.seekTo(it.toLong()) },
+                        value = shownPosition,
+                        onValueChange = { dragPosition = it },
+                        onValueChangeFinished = {
+                            dragPosition?.let { playerVm.seekTo(it.toLong()) }
+                            dragPosition = null
+                        },
                         valueRange = 0f..if (duration > 0) duration.toFloat() else 1f,
                         enabled = duration > 0,
                         colors = SliderDefaults.colors(
@@ -260,23 +271,34 @@ fun NowPlayingScreen(
             containerColor = Color(0xFF282828),
             contentColor = Color.White
         ) {
-            Column(Modifier.padding(bottom = 24.dp)) {
-                Text(
-                    "Up next",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                )
-                if (queue.isEmpty()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 560.dp)
+            ) {
+                stickyHeader {
                     Text(
-                        "Nothing in the queue",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFB3B3B3),
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                        "Up next",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF282828))
+                            .padding(horizontal = 24.dp, vertical = 8.dp)
                     )
+                }
+                if (queue.isEmpty()) {
+                    item {
+                        Text(
+                            "Nothing in the queue",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFFB3B3B3),
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                        )
+                    }
                 } else {
-                    queue.forEachIndexed { index, t ->
+                    itemsIndexed(queue) { index, t ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

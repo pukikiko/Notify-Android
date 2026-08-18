@@ -64,7 +64,7 @@ class OfflineStore(private val context: Context) {
         all().any { it.instanceId == instanceId && it.trackId == trackId }
 
     suspend fun tracksForCollection(collection: OfflineCollection): List<OfflineTrack> =
-        all().filter { it.collection == collection }
+        all().filter { it.collection?.key == collection.key }
 
     /** True if the local file for this track still exists on disk. */
     suspend fun isPlayable(instanceId: String, trackId: String): Boolean {
@@ -112,13 +112,13 @@ class OfflineStore(private val context: Context) {
     }
 
     suspend fun removeCollection(collection: OfflineCollection) {
-        val list = all().filter { it.collection == collection }
+        val list = all().filter { it.collection?.key == collection.key }
         list.forEach { runCatching { java.io.File(it.filePath).delete() } }
         context.offlineDataStore.edit { prefs ->
             val all = runCatching {
                 json.decodeFromString<List<OfflineTrack>>(prefs[Keys.index] ?: "[]")
             }.getOrDefault(emptyList())
-            prefs[Keys.index] = json.encodeToString(all.filterNot { it.collection == collection })
+            prefs[Keys.index] = json.encodeToString(all.filterNot { it.collection?.key == collection.key })
         }
     }
 

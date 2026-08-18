@@ -22,36 +22,40 @@ import com.notify.core.ui.playlistViewModel
 fun TvPlaylistScreen(playlistId: String, playerVm: PlayerViewModel, nav: TvNavState) {
     val vm = playlistViewModel(playlistId)
     val data by vm.data.collectAsState()
+    val discover by vm.discover.collectAsState()
     val searchResults by vm.searchResults.collectAsState()
 
     var showAdd by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
 
     val playlist = data?.playlist
-    val tracks = data?.tracks.orEmpty()
+    val trackList = data?.tracks.orEmpty().ifEmpty { discover?.tracks.orEmpty() }
+    val isDiscover = vm.isDiscover
 
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Text(
-                playlist?.name ?: "…",
+                playlist?.name ?: discover?.playlist?.name ?: "…",
                 color = Color.White,
                 fontSize = 38.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 40.dp, top = 36.dp)
             )
             Text(
-                "Playlist · ${tracks.size} songs",
+                "Playlist · ${trackList.size} songs",
                 color = Color(0xFFB3B3B3),
                 fontSize = 16.sp,
                 modifier = Modifier.padding(start = 40.dp, top = 6.dp)
             )
             Row(Modifier.padding(start = 40.dp, top = 16.dp)) {
-                TvInputButton(if (showAdd) "Close" else "Add tracks", onClick = { showAdd = !showAdd })
-                Spacer(Modifier.width(12.dp))
-                TvInputButton("Delete", onClick = { vm.deletePlaylist { nav.back() } })
-                Spacer(Modifier.width(12.dp))
-                if (tracks.isNotEmpty()) {
-                    TvInputButton("Play all", primary = true, onClick = { playerVm.playQueue(tracks, 0) })
+                if (!isDiscover) {
+                    TvInputButton(if (showAdd) "Close" else "Add tracks", onClick = { showAdd = !showAdd })
+                    Spacer(Modifier.width(12.dp))
+                    TvInputButton("Delete", onClick = { vm.deletePlaylist { nav.back() } })
+                    Spacer(Modifier.width(12.dp))
+                }
+                if (trackList.isNotEmpty()) {
+                    TvInputButton("Play all", primary = true, onClick = { playerVm.playQueue(trackList, 0) })
                 }
             }
         }
@@ -64,7 +68,7 @@ fun TvPlaylistScreen(playlistId: String, playerVm: PlayerViewModel, nav: TvNavSt
                     if (searchResults.isNotEmpty()) {
                         Column {
                             searchResults.take(8).forEach { t ->
-                                val exists = tracks.any { it.id == t.id }
+                                val exists = trackList.any { it.id == t.id }
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -91,16 +95,16 @@ fun TvPlaylistScreen(playlistId: String, playerVm: PlayerViewModel, nav: TvNavSt
         }
 
         item {
-            if (tracks.isEmpty()) {
+            if (trackList.isEmpty()) {
                 Text(
-                    "Empty playlist. Add some tracks.",
+                    if (isDiscover) "This playlist has no tracks." else "Empty playlist. Add some tracks.",
                     color = Color(0xFFB3B3B3),
                     fontSize = 16.sp,
                     modifier = Modifier.padding(40.dp)
                 )
             } else {
                 TvTrackList(
-                    tracks = tracks,
+                    tracks = trackList,
                     playerVm = playerVm
                 )
             }

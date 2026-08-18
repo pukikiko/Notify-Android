@@ -49,6 +49,7 @@ fun HomeScreen(
     val vm = homeViewModel()
     val data by vm.data.collectAsState()
     val downloads by vm.downloads.collectAsState()
+    val homeError by vm.error.collectAsState()
     val isPlaying by playerVm.playing.collectAsState()
 
     LazyColumn(
@@ -80,6 +81,37 @@ fun HomeScreen(
                     )
                 }
                 Spacer(Modifier.weight(1f))
+            }
+        }
+
+        if (data == null && homeError != null) {
+            item {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(48.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "Couldn't load your home feed",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        homeError ?: "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFB3B3B3),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Button(
+                        onClick = { vm.refresh() },
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8F5CFF), contentColor = Color.Black),
+                        modifier = Modifier.padding(top = 16.dp)
+                    ) {
+                        Text("Retry")
+                    }
+                }
             }
         }
 

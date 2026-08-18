@@ -161,7 +161,7 @@ fun LibraryScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
-            if (query.isBlank() || "Liked Songs".contains(query, true)) {
+            if (query.isBlank() || "Liked Songs".lowercase().contains(query.lowercase())) {
                 item {
                     LikedSongsRow(count = likedTracks?.size ?: 0, onClick = onOpenLikedSongs)
                 }

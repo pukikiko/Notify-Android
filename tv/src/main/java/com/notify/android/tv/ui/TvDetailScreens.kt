@@ -79,7 +79,8 @@ fun TvArtistScreen(artistId: String, playerVm: PlayerViewModel, nav: TvNavState)
         item {
             Row(Modifier.padding(start = 40.dp, top = 20.dp)) {
                 com.notify.android.tv.ui.components.TvPlayButton(
-                    onClick = { playerVm.playQueue(tracks, 0) }
+                    onClick = { playerVm.playQueue(tracks, 0) },
+                    enabled = tracks.isNotEmpty()
                 )
                 Spacer(Modifier.width(16.dp))
                 if (!isDiscover && artist != null) {
@@ -171,7 +172,8 @@ fun TvAlbumScreen(albumId: String, playerVm: PlayerViewModel, nav: TvNavState) {
         item {
             Row(Modifier.padding(start = 40.dp, top = 20.dp)) {
                 com.notify.android.tv.ui.components.TvPlayButton(
-                    onClick = { playerVm.playQueue(tracks, 0) }
+                    onClick = { playerVm.playQueue(tracks, 0) },
+                    enabled = tracks.isNotEmpty()
                 )
                 Spacer(Modifier.width(16.dp))
                 if (!isDiscover && album != null) {

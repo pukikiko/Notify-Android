@@ -373,11 +373,18 @@ class PlayerEngine(
 
     private fun onTrackEnded() {
         val track = _current.value ?: run { advance(1); return }
-        // A live stream that is still downloading should never have ended: the
-        // server keeps the connection open until the download completes. If it
-        // ended anyway (e.g. the live transcode hiccuped), confirm against the
-        // server and re-attempt rather than skipping to the next track.
-        if (track.status == "downloading" && isPrematureEnd(track)) {
+        // A track that is still downloading is live-streamed: the server holds
+        // the connection open and feeds the growing file (or the growing
+        // transcode output) until the download completes, so playback reaching
+        // ENDED while the row still says 'downloading' means the live stream
+        // was cut short (a stalled peer, a hiccup in the live transcode) — not
+        // that the song actually finished. Confirm against the server rather
+        // than blindly skipping:
+        //   - still downloading -> re-attempt the *same* track. Each attempt
+        //     replays more of the file as it grows, so the right song keeps
+        //     playing instead of the queue sprinting ahead.
+        //   - available now      -> the download just finished; move on.
+        if (track.status == "downloading") {
             scope.launch {
                 val fresh = runCatching { api.track(track.id) }.getOrNull()?.track
                 if (_current.value?.id != track.id) return@launch
@@ -391,15 +398,6 @@ class PlayerEngine(
             return
         }
         advance(1)
-    }
-
-    /** True when playback ended far before the expected length, which for a
-     *  still-downloading track means the live stream was cut short. */
-    private fun isPrematureEnd(track: Track): Boolean {
-        val expected = track.duration?.takeIf { it > 0 }?.times(1000) ?: return false
-        val played = player.currentPosition.coerceAtLeast(0)
-        val missing = expected - played
-        return missing > 20_000 && played < expected * 0.8
     }
 
     /** Re-prepare the current track (a fresh stream request — more of the file

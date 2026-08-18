@@ -167,7 +167,11 @@ private fun filterTracks(list: List<Track>, q: String): List<Track> =
     }
 
 private fun sortTracks(list: List<Track>, sort: String): List<Track> =
-    if (sort == "Title") list.sortedBy { it.title.lowercase() } else list
+    when (sort) {
+        "Title" -> list.sortedBy { it.title.lowercase() }
+        "Recently added" -> list.sortedByDescending { it.createdAt }
+        else -> list
+    }
 
 @Composable
 private fun TrackGrid(list: List<Track>, playerVm: PlayerViewModel) {

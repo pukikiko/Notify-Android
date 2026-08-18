@@ -50,6 +50,10 @@ fun ArtistScreen(
     val toast by vm.toast.collectAsState()
     val isPlaying by playerVm.playing.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(toast) {
+        toast?.let { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show() }
+    }
 
     val data = dataState
     val discover = discoverState
@@ -158,13 +162,7 @@ fun ArtistScreen(
                     Spacer(Modifier.width(16.dp))
                     val liked = artist?.liked == true
                     IconButton(
-                        onClick = {
-                            if (isDiscover) {
-                                // toast shown via VM
-                            } else {
-                                vm.toggleLike()
-                            }
-                        },
+                        onClick = { vm.toggleLike() },
                         colors = IconButtonDefaults.iconButtonColors(contentColor = if (liked) Color(0xFF8F5CFF) else Color.White)
                     ) {
                         Icon(

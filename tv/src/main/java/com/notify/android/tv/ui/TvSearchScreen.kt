@@ -48,6 +48,7 @@ fun TvSearchScreen(playerVm: PlayerViewModel, nav: TvNavState) {
     val disc by vm.disc.collectAsState()
     val lib by vm.lib.collectAsState()
     val searching by vm.searching.collectAsState()
+    val searchError by vm.error.collectAsState()
     val scope = rememberCoroutineScope()
 
     var text by remember { mutableStateOf("") }
@@ -96,18 +97,18 @@ fun TvSearchScreen(playerVm: PlayerViewModel, nav: TvNavState) {
                     "Americana" to "#148a08", "House" to "#503750", "Indie Rock" to "#bc5900",
                     "Shoegaze" to "#477d95", "Soul" to "#dc148c"
                 )
-                Row(
-                    modifier = Modifier.padding(horizontal = 40.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 40.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    browse.chunked(4).forEach { group ->
-                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            group.forEach { (title, hex) ->
-                                BrowseTile(title, Color(android.graphics.Color.parseColor(hex))) {
-                                    text = title
-                                    vm.setQuery(title.lowercase())
-                                }
-                            }
+                    browse.forEach { (title, hex) ->
+                        BrowseTile(title, Color(android.graphics.Color.parseColor(hex))) {
+                            text = title
+                            vm.setQuery(title.lowercase())
                         }
                     }
                 }
@@ -127,6 +128,17 @@ fun TvSearchScreen(playerVm: PlayerViewModel, nav: TvNavState) {
                         "Searching…",
                         color = Color(0xFFB3B3B3),
                         fontSize = 16.sp,
+                        modifier = Modifier.padding(40.dp)
+                    )
+                }
+            }
+
+            if (searchError != null) {
+                item {
+                    Text(
+                        "Search failed: $searchError",
+                        color = Color(0xFFE53935),
+                        fontSize = 15.sp,
                         modifier = Modifier.padding(40.dp)
                     )
                 }
@@ -198,7 +210,7 @@ fun TvSearchScreen(playerVm: PlayerViewModel, nav: TvNavState) {
                                 imageUrl = imageUrl(playlist.image),
                                 title = playlist.name,
                                 subtitle = "${playlist.owner ?: "Spotify"} · ${playlist.trackCount ?: 0} songs",
-                                onClick = { nav.navigate(TvScreen.Playlist("sp-${playlist.id}")) },
+                                onClick = { nav.navigate(TvScreen.Playlist(playlist.id)) },
                                 width = 220.dp
                             )
                         }
@@ -226,7 +238,8 @@ fun TvSearchScreen(playerVm: PlayerViewModel, nav: TvNavState) {
                 }
             }
 
-            if (!searching && artists.isEmpty() && albums.isEmpty() && playlists.isEmpty() && tracks.isEmpty() && libTracks.isEmpty()) {
+            if (!searching && artists.isEmpty() && albums.isEmpty() && playlists.isEmpty() && tracks.isEmpty() && libTracks.isEmpty()
+                    && searchError == null && (disc != null || lib != null)) {
                 item {
                     Text(
                         "No results found for “$query”.",
@@ -366,7 +379,7 @@ private fun BrowseTile(title: String, color: Color, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
-            .size(width = 220.dp, height = 110.dp)
+            .size(width = 200.dp, height = 100.dp)
             .border(
                 width = if (focused) 4.dp else 0.dp,
                 color = if (focused) Color.White else Color.Transparent,

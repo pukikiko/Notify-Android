@@ -36,7 +36,7 @@ fun DownloadCollectionButton(
     val downloaded by vm.tracks.collectAsState()
     val downloads by vm.downloads.collectAsState()
 
-    val downloadedCount = downloaded.count { it.collection == collection }
+    val downloadedCount = downloaded.count { it.collection?.key == collection.key }
     val fullyDownloaded = downloadedCount >= tracks.size
     val downloading = downloads.values.any {
         it.state == DownloadState.DOWNLOADING && tracks.any { t -> t.id == it.trackId }
@@ -44,7 +44,7 @@ fun DownloadCollectionButton(
 
     OutlinedButton(
         onClick = { vm.downloadCollection(tracks, collection) },
-        enabled = !downloading,
+        enabled = !downloading && !fullyDownloaded,
         shape = RoundedCornerShape(50),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
         modifier = modifier

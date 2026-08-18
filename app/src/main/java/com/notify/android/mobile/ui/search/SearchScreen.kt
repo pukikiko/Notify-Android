@@ -120,7 +120,10 @@ fun SearchScreen(
                             BrowseTile(
                                 title = title,
                                 color = Color(android.graphics.Color.parseColor(colorHex)),
-                                onClick = { vm.setQuery(title.lowercase()) },
+                                onClick = {
+                                    text = title
+                                    vm.setQuery(title.lowercase())
+                                },
                                 modifier = Modifier.weight(1f).padding(4.dp)
                             )
                         }
@@ -194,8 +197,8 @@ fun SearchScreen(
                                     else -> null
                                 }
                                 if (payload != null) {
-                                    val res = vm.playNow(payload)
-                                    if (res.isNotEmpty()) playerVm.playQueue(res, 0)
+                                    runCatching { vm.playNow(payload) }
+                                        .onSuccess { res -> if (res.isNotEmpty()) playerVm.playQueue(res, 0) }
                                 }
                             }
                         }
@@ -293,7 +296,7 @@ fun SearchScreen(
                 }
             }
 
-            if (!searching && !hasResults && !busy) {
+            if (!searching && !hasResults && !busy && searchError == null) {
                 item {
                     EmptyState(
                         text = "No results found for “$query”. Try a different spelling."

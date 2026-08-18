@@ -107,18 +107,29 @@ class SearchViewModel(container: AppContainer, initialQuery: String = "") : Noti
             _lib.value = null
             _disc.value = null
             _searching.value = false
+            _error.value = null
             return
         }
         searchJob = viewModelScope.launch {
             delay(300)
             _searching.value = true
-            runCatching { api.librarySearch(q) }
-                .onSuccess { _lib.value = it }
-                .onFailure { e -> _error.value = "lib: ${e.message}" }
-            runCatching { api.discoverSearch(q) }
-                .onSuccess { _disc.value = it }
-                .onFailure { e -> _error.value = "disc: ${e.message}" }
-            _searching.value = false
+            _error.value = null
+            try {
+                runCatching { api.librarySearch(q) }
+                    .onSuccess { _lib.value = it }
+                    .onFailure { e ->
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        _error.value = "lib: ${e.message}"
+                    }
+                runCatching { api.discoverSearch(q) }
+                    .onSuccess { _disc.value = it }
+                    .onFailure { e ->
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        _error.value = "disc: ${e.message}"
+                    }
+            } finally {
+                _searching.value = false
+            }
         }
     }
 
@@ -202,6 +213,9 @@ class PlaylistViewModel(
     private val _data = MutableStateFlow<PlaylistResponse?>(null)
     val data: StateFlow<PlaylistResponse?> = _data.asStateFlow()
 
+    private val _discover = MutableStateFlow<DiscoverPlaylistDetail?>(null)
+    val discover: StateFlow<DiscoverPlaylistDetail?> = _discover.asStateFlow()
+
     private val _searchResults = MutableStateFlow<List<Track>>(emptyList())
     val searchResults: StateFlow<List<Track>> = _searchResults.asStateFlow()
 
@@ -211,17 +225,29 @@ class PlaylistViewModel(
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast.asStateFlow()
 
+    /** A discover/catalog playlist carries a non-numeric id (Spotify mbid or
+     *  an optional sp- prefix); a library playlist carries a numeric id. */
+    val isDiscover: Boolean = playlistId.toLongOrNull() == null
+
     init { refresh() }
 
     fun refresh() {
         viewModelScope.launch {
-            runCatching { api.playlist(playlistId) }
-                .onSuccess { _data.value = it }
-                .onFailure { e -> _error.value = e.message }
+            if (isDiscover) {
+                val key = if (playlistId.startsWith("sp-")) playlistId.substring(3) else playlistId
+                runCatching { api.discoverPlaylist(key) }
+                    .onSuccess { _discover.value = it }
+                    .onFailure { e -> _error.value = e.message }
+            } else {
+                runCatching { api.playlist(playlistId) }
+                    .onSuccess { _data.value = it }
+                    .onFailure { e -> _error.value = e.message }
+            }
         }
     }
 
     fun searchLibrary(q: String) {
+        if (isDiscover) return
         if (q.isBlank()) { _searchResults.value = emptyList(); return }
         viewModelScope.launch {
             runCatching { api.librarySearch(q) }
@@ -230,6 +256,7 @@ class PlaylistViewModel(
     }
 
     fun addTrack(trackId: String) {
+        if (isDiscover) return
         viewModelScope.launch {
             runCatching { api.addTracksToPlaylist(playlistId, listOf(trackId)) }
                 .onSuccess {
@@ -240,6 +267,7 @@ class PlaylistViewModel(
     }
 
     fun removeTrack(trackId: String) {
+        if (isDiscover) return
         viewModelScope.launch {
             runCatching { api.removeTrackFromPlaylist(playlistId, trackId) }
                 .onSuccess { refresh() }
@@ -247,6 +275,7 @@ class PlaylistViewModel(
     }
 
     fun deletePlaylist(onDeleted: () -> Unit) {
+        if (isDiscover) return
         viewModelScope.launch {
             runCatching { api.deletePlaylist(playlistId) }
                 .onSuccess { onDeleted() }
@@ -254,6 +283,7 @@ class PlaylistViewModel(
     }
 
     fun rename(name: String) {
+        if (isDiscover) return
         viewModelScope.launch {
             runCatching { api.renamePlaylist(playlistId, name) }
                 .onSuccess { refresh() }

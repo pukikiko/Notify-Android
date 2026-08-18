@@ -42,6 +42,7 @@ import com.notify.android.mobile.ui.library.LikedSongsScreen
 import com.notify.android.mobile.ui.nowplaying.NowPlayingScreen
 import com.notify.android.mobile.ui.offline.OfflineScreen
 import com.notify.core.ui.player.PlayerViewModel
+import com.notify.core.ui.playlistsViewModel
 import com.notify.android.mobile.ui.playlist.PlaylistScreen
 import com.notify.android.mobile.ui.search.SearchScreen
 import com.notify.android.mobile.ui.settings.SettingsScreen
@@ -64,7 +65,7 @@ object Routes {
     const val CREATE = "create"
 
     fun search(query: String = ""): String =
-        "search?q=" + URLEncoder.encode(query, "UTF-8")
+        "search?q=" + URLEncoder.encode(query, "UTF-8").replace("+", "%20")
     fun playlist(id: String) = "playlist/$id"
     fun artist(id: String) = "artist/$id"
     fun album(id: String) = "album/$id"
@@ -83,6 +84,9 @@ fun MainScreen(user: User, playerVm: PlayerViewModel, onLogout: () -> Unit) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     var showCreate by remember { mutableStateOf(false) }
+    var creatingPlaylist by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf("") }
+    val playlistsVm = playlistsViewModel()
 
     val onNowPlaying = currentDestination?.route == Routes.NOW_PLAYING
 
@@ -219,7 +223,7 @@ fun MainScreen(user: User, playerVm: PlayerViewModel, onLogout: () -> Unit) {
 
     if (showCreate) {
         ModalBottomSheet(
-            onDismissRequest = { showCreate = false },
+            onDismissRequest = { showCreate = false; creatingPlaylist = false },
             containerColor = Color(0xFF282828),
             contentColor = Color.White
         ) {
@@ -231,9 +235,42 @@ fun MainScreen(user: User, playerVm: PlayerViewModel, onLogout: () -> Unit) {
                     color = Color.White,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
                 )
-                CreateSheetItem("New playlist") {
-                    showCreate = false
-                    navController.navigate(Routes.LIBRARY)
+                if (!creatingPlaylist) {
+                    CreateSheetItem("New playlist") {
+                        creatingPlaylist = true
+                        newName = ""
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.OutlinedTextField(
+                            value = newName,
+                            onValueChange = { newName = it },
+                            label = { Text("Playlist name") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                playlistsVm.create(newName) { id ->
+                                    showCreate = false
+                                    creatingPlaylist = false
+                                    newName = ""
+                                    navController.navigate(Routes.playlist(id))
+                                }
+                            },
+                            enabled = newName.isNotBlank(),
+                            shape = RoundedCornerShape(50),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8F5CFF), contentColor = Color.Black)
+                        ) {
+                            Text("Create")
+                        }
+                    }
                 }
             }
         }

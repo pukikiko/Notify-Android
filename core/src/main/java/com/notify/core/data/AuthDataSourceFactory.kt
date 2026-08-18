@@ -22,10 +22,15 @@ class AuthDataSourceFactory(
         .setReadTimeoutMs(120_000)
 
     override fun createDataSource(): HttpDataSource {
+        val dataSource = base.createDataSource()
+        // Set the token on the *individual* data source, not the shared base
+        // factory. Mutating the base's default request properties would leak
+        // the previous instance's Authorization header onto later requests
+        // (e.g. after a logout or an instance switch to one without a token).
         tokenProvider()?.let { token ->
-            base.setDefaultRequestProperties(mapOf("Authorization" to "Bearer $token"))
+            dataSource.setRequestProperty("Authorization", "Bearer $token")
         }
-        return base.createDataSource()
+        return dataSource
     }
 
     override fun setDefaultRequestProperties(properties: MutableMap<String, String>): HttpDataSource.Factory {

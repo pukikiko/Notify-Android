@@ -164,7 +164,7 @@ private fun TvTab(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun TvPlayButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun TvPlayButton(onClick: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier = modifier
@@ -174,12 +174,12 @@ fun TvPlayButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
                 color = if (focused) Color.White else Color.Transparent,
                 shape = RoundedCornerShape(50)
             )
-            .background(NotifyPurple, RoundedCornerShape(50))
-            .clickable(onClick = onClick)
+            .background(if (enabled) NotifyPurple else Color(0xFF4D4D4D), RoundedCornerShape(50))
+            .clickable(enabled = enabled, onClick = onClick)
             .onFocusChanged { focused = it.hasFocus },
         contentAlignment = Alignment.Center
     ) {
-        Icon(Icons.Filled.PlayArrow, "Play", tint = Color.Black, modifier = Modifier.size(32.dp))
+        Icon(Icons.Filled.PlayArrow, "Play", tint = if (enabled) Color.Black else Color(0xFF8A8A8A), modifier = Modifier.size(32.dp))
     }
 }
 

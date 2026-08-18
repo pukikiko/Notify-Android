@@ -41,6 +41,7 @@ fun PlaylistScreen(
 ) {
     val vm = playlistViewModel(playlistId)
     val data by vm.data.collectAsState()
+    val discover by vm.discover.collectAsState()
     val searchResults by vm.searchResults.collectAsState()
     val isPlaying by playerVm.playing.collectAsState()
 
@@ -48,9 +49,12 @@ fun PlaylistScreen(
     var query by remember { mutableStateOf("") }
     var editingName by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
+    var confirmDelete by remember { mutableStateOf(false) }
 
+    val isDiscover = vm.isDiscover
     val playlist = data?.playlist
-    val tracks = data?.tracks.orEmpty()
+    val tracks = data?.tracks.orEmpty().ifEmpty { discover?.tracks.orEmpty() }
+    val playlistName = playlist?.name ?: discover?.playlist?.name ?: ""
 
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -60,7 +64,7 @@ fun PlaylistScreen(
                     .background(
                         androidx.compose.ui.graphics.Brush.verticalGradient(
                             listOf(
-                                hslColor(playlist?.name ?: "playlist"),
+                                hslColor(playlistName),
                                 Color.Transparent
                             )
                         )
@@ -81,13 +85,13 @@ fun PlaylistScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Artwork(
-                    url = null,
-                    contentDescription = playlist?.name,
+                    url = if (isDiscover) imageUrl(discover?.playlist?.image) else null,
+                    contentDescription = playlistName,
                     modifier = Modifier.size(96.dp)
                 )
                 Column(Modifier.padding(start = 16.dp).weight(1f)) {
                     Text("PLAYLIST", style = MaterialTheme.typography.labelSmall, color = Color(0xFFB3B3B3))
-                    if (editingName) {
+                    if (editingName && !isDiscover) {
                         Row {
                             OutlinedTextField(
                                 value = name,
@@ -99,14 +103,17 @@ fun PlaylistScreen(
                         }
                     } else {
                         Text(
-                            playlist?.name ?: "…",
+                            playlistName,
                             style = MaterialTheme.typography.headlineMedium,
                             color = Color.White,
-                            modifier = Modifier.clickable { name = playlist?.name ?: ""; editingName = true }
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = if (isDiscover) Modifier else Modifier.clickable { name = playlistName; editingName = true }
                         )
                     }
+                    val totalMin = tracks.sumOf { (it.duration ?: 0.0).toLong() } / 60
                     Text(
-                        "You · ${tracks.size} songs, ${((playlist?.duration ?: 0L) / 60)} min",
+                        "You · ${tracks.size} songs, $totalMin min",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFFB3B3B3)
                     )
@@ -126,20 +133,22 @@ fun PlaylistScreen(
                         if (isPlayingCurrent) playerVm.toggle() else playerVm.playQueue(tracks, 0)
                     }
                 )
-                Spacer(Modifier.width(16.dp))
-                OutlinedButton(onClick = { showAdd = !showAdd }, shape = RoundedCornerShape(50)) {
-                    Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
-                    Text(" Add tracks")
-                }
-                Spacer(Modifier.width(8.dp))
-                DownloadCollectionButton(
-                    tracks = tracks,
-                    collection = com.notify.core.data.OfflineCollection("playlist", playlistId, playlist?.name ?: "Playlist")
-                )
-                Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = { vm.deletePlaylist { onBack() } }, shape = RoundedCornerShape(50)) {
-                    Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
-                    Text(" Delete")
+                if (!isDiscover) {
+                    Spacer(Modifier.width(16.dp))
+                    OutlinedButton(onClick = { showAdd = !showAdd }, shape = RoundedCornerShape(50)) {
+                        Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                        Text(" Add tracks")
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    DownloadCollectionButton(
+                        tracks = tracks,
+                        collection = com.notify.core.data.OfflineCollection("playlist", playlistId, playlistName)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(onClick = { confirmDelete = true }, shape = RoundedCornerShape(50)) {
+                        Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
+                        Text(" Delete")
+                    }
                 }
             }
         }
@@ -190,7 +199,7 @@ fun PlaylistScreen(
         }
 
         if (tracks.isEmpty()) {
-            item { EmptyState("Empty playlist. Add some tracks.") }
+            item { EmptyState(if (isDiscover) "This playlist has no tracks." else "Empty playlist. Add some tracks.") }
         } else {
             items(tracks.size) { index ->
                 val track = tracks[index]
@@ -204,14 +213,38 @@ fun PlaylistScreen(
                     onOpenArtist = { track.artist?.id?.let(onOpenArtist) },
                     onOpenAlbum = { track.album?.id?.let(onOpenAlbum) },
                     showArtist = true,
-                    trailing = {
-                        IconButton(onClick = { vm.removeTrack(track.id) }) {
-                            Icon(Icons.Default.Delete, "Remove", tint = Color(0xFFB3B3B3), modifier = Modifier.size(18.dp))
+                    trailing = if (isDiscover) null else {
+                        {
+                            IconButton(onClick = { vm.removeTrack(track.id) }) {
+                                Icon(Icons.Default.Delete, "Remove", tint = Color(0xFFB3B3B3), modifier = Modifier.size(18.dp))
+                            }
                         }
                     }
                 )
             }
         }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            containerColor = Color(0xFF282828),
+            titleContentColor = Color.White,
+            textContentColor = Color(0xFFB3B3B3),
+            title = { Text("Delete playlist?") },
+            text = { Text("“$playlistName” will be removed from your library. This can't be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDelete = false
+                        vm.deletePlaylist { onBack() }
+                    }
+                ) { Text("Delete", color = Color(0xFFE53935)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 
